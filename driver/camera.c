@@ -62,6 +62,8 @@ typedef enum {
 #define REG16_CHIDH     0x300A
 #define REG16_CHIDL     0x300B
 
+#define FRAME_SIGNATURE 0xffd8ff
+
 #if defined(ARDUINO_ARCH_ESP32) && defined(CONFIG_ARDUHAL_ESP_LOG)
 #include "esp32-hal-log.h"
 #define TAG ""
@@ -659,10 +661,12 @@ static void IRAM_ATTR camera_fb_done()
 static void IRAM_ATTR dma_finish_frame()
 {
     size_t buf_len = s_state->width * s_state->fb_bytes_per_pixel / s_state->dma_per_line;
+    ESP_LOGV(TAG, "dma_finish_frame");
 
     if(!s_state->fb->ref) {
         // is the frame bad?
         if(s_state->fb->bad){
+            ESP_LOGD(TAG, "bad frame");
             s_state->fb->bad = 0;
             s_state->fb->len = 0;
             *((uint32_t *)s_state->fb->buf) = 0;
@@ -693,6 +697,7 @@ static void IRAM_ATTR dma_finish_frame()
                 //send out the frame
                 camera_fb_done();
             } else if(s_state->config.fb_count == 1){
+                ESP_LOGD(TAG, "empty frame");
                 //frame was empty?
                 i2s_start_bus();
             }
@@ -727,8 +732,8 @@ static void IRAM_ATTR dma_filter_buffer(size_t buf_idx)
         //check for correct JPEG header
         if(s_state->sensor.pixformat == PIXFORMAT_JPEG) {
             uint32_t sig = *((uint32_t *)s_state->fb->buf) & 0xFFFFFF;
-            if(sig != 0xffd8ff) {
-                //ets_printf("bad header\n");
+            if(sig != FRAME_SIGNATURE) {
+                ESP_LOGD(TAG, "invalid frame sig: %x (should be %x)", sig, FRAME_SIGNATURE);
                 s_state->fb->bad = 1;
                 return;
             }
